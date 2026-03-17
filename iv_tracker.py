@@ -52,7 +52,37 @@ class IVTracker:
         
         conn.commit()
         conn.close()
-    
+
+    def get_iv_history(self, ticker, days_back):
+        """Get IV from N days ago"""
+        from datetime import datetime, timedelta
+        try:
+            target_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
+
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+
+            # Get closest date to target (within 2 days)
+            query = '''
+                SELECT iv_30day, date 
+                FROM iv_history 
+                WHERE ticker = ? 
+                AND date >= date(?, '-2 days')
+                AND date <= date(?, '+2 days')
+                ORDER BY ABS(julianday(date) - julianday(?))
+                LIMIT 1
+            '''
+
+            cursor.execute(query, (ticker, target_date, target_date, target_date))
+            result = cursor.fetchone()
+            conn.close()
+
+            if result:
+                return result[0]  # Return IV value
+            return None
+
+        except Exception as e:
+            return None
     def get_iv_data(self, ticker):
         """
         Fetch current IV for a ticker using Yahoo Finance
@@ -313,12 +343,12 @@ if __name__ == "__main__":
     email_from = os.getenv('EMAIL_FROM')
     email_to = os.getenv('EMAIL_TO')
     email_password = os.getenv('EMAIL_PASSWORD')
-    
+
     if all([email_from, email_to, email_password]):
         print("\n📧 Sending email alert...")
         try:
             from email_alerts import send_email_alert
-            send_email_alert(alerts_df, email_from, email_to, email_password, attach_dashboard=False)
+            send_email_alert(alerts_df, email_from, email_to, email_password, attach_dashboard=False, tracker=tracker)
         except Exception as e:
             print(f"❌ Email error: {str(e)}")
     
